@@ -17,7 +17,7 @@ processed_message_ids = set()
 def do_p2_im_message_receive_v1(data: P2ImMessageReceiveV1) -> None:
     message_id = data.event.message.message_id
     if message_id in processed_message_ids:
-        logger.info(f"重复消息，已忽略: {message_id}")
+        # logger.info(f"重复消息，已忽略: {message_id}")
         return
     processed_message_ids.add(message_id)
 
@@ -30,10 +30,7 @@ def do_p2_im_message_receive_v1(data: P2ImMessageReceiveV1) -> None:
 
     content = json.dumps(
         {
-            "text": "收到你发送的消息："
-            + res_content
-            + "\nReceived message:"
-            + res_content
+            "text": "收到你发送的消息：" + res_content
         }
     )
 
@@ -60,26 +57,26 @@ def do_p2_im_message_receive_v1(data: P2ImMessageReceiveV1) -> None:
             raise Exception(
                 f"client.im.v1.chat.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}"
             )
-    else:
-        request: ReplyMessageRequest = (
-            ReplyMessageRequest.builder()
-            .message_id(data.event.message.message_id)
-            .request_body(
-                ReplyMessageRequestBody.builder()
-                .content(content)
-                .msg_type("text")
-                .build()
-            )
-            .build()
-        )
+    # else:
+    #     request: ReplyMessageRequest = (
+    #         ReplyMessageRequest.builder()
+    #         .message_id(data.event.message.message_id)
+    #         .request_body(
+    #             ReplyMessageRequestBody.builder()
+    #             .content(content)
+    #             .msg_type("text")
+    #             .build()
+    #         )
+    #         .build()
+    #     )
         # 使用OpenAPI回复消息
         # Reply to messages using send OpenAPI
         # https://open.feishu.cn/document/uAjLw4CM/ukTMukTMukTM/reference/im-v1/message/reply
-        response: ReplyMessageResponse = client.im.v1.message.reply(request)
-        if not response.success():
-            raise Exception(
-                f"client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}"
-            )
+        # response: ReplyMessageResponse = client.im.v1.message.reply(request)
+        # if not response.success():
+        #     raise Exception(
+        #         f"client.im.v1.message.reply failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}"
+        #     )
 
 
 # 注册事件回调

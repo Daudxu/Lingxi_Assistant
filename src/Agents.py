@@ -26,10 +26,6 @@ os.environ["OPENAI_API_BASE"] = os.getenv("OPENAI_API_BASE")
 os.environ["DEEPSEEK_API_KEY"] = os.getenv("DEEPSEEK_API_KEY")
 os.environ["DEEPSEEK_API_BASE"] = os.getenv("DEEPSEEK_API_BASE")
 
-
-
-
-
 # 添加缓存以提高性能，避免重复请求相同内容时消耗额外的API调用
 from langchain_core.globals import set_llm_cache
 set_llm_cache(InMemoryCache())

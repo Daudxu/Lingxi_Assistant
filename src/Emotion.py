@@ -19,6 +19,11 @@ class EmotionClass:
         
         print(f"Processing input: {input}")
         
+        # 新增：感谢/结束语识别，直接返回友好情绪
+        thanks_keywords = ["谢谢", "thanks", "thank you", "辛苦了", "好的", "明白了"]
+        if any(k in input.lower() for k in thanks_keywords):
+            return {"feeling": "friendly", "score": "1"}
+
         # 最多重试3次
         max_retries = 2
         retry_count = 0

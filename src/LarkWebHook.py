@@ -104,6 +104,32 @@ def handle_message(data: P2ImMessageReceiveV1):
                 send_message(client.im.v1.message.create, request, "client.im.v1.message.create failed")
             return
 
+        # 新增：寒暄关键词列表
+        GREETING_KEYWORDS = {"你好", "你好啊", "hi", "hello", "您好", "哈喽", "嗨", "在吗", "hello!", "hi!"}
+
+        # 判断是否为寒暄或空白消息，直接友好回复并跳过AI处理
+        norm_content = res_content.lower().replace("！", "").replace("!", "").replace("。", "").replace("，", "").strip()
+        if not norm_content or norm_content in GREETING_KEYWORDS:
+            logger.info("收到寒暄或空白消息，跳过AI处理")
+            reply_text = "你好！有什么可以帮您的吗？"
+            content = json.dumps({"text": reply_text})
+            if data.event.message.chat_type == "p2p":
+                chat_id = data.event.message.chat_id or ""
+                request = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("text")
+                        .content(content)
+                        .build()
+                    )
+                    .build()
+                )
+                send_message(client.im.v1.message.create, request, "client.im.v1.message.create failed")
+            return
+
         # 获取用户ID，优先 open_id
         sender_id = getattr(data.event.sender.sender_id, "open_id", None) or getattr(data.event.sender.sender_id, "union_id", None) or "unknown"
         add_user("userid", sender_id)
@@ -116,14 +142,17 @@ def handle_message(data: P2ImMessageReceiveV1):
             logger.info(f"==========================AI请求结束=========================")
             logger.info(f"AI回复: {msg}")
             reply_text = msg.get('output', '') if isinstance(msg, dict) else str(msg)
-            # 新增：如果output为空，重试一次
+            # 新增：如果output为空，且为寒暄输入，返回友好问候
             if not reply_text:
-                logger.warning(f"run_agent 返回 output 为空，重试一次，原始返回: {msg}")
-                msg_retry = AgentClass().run_agent(res_content)
-                logger.info(f"AI重试回复: {msg_retry}")
-                reply_text = msg_retry.get('output', '') if isinstance(msg_retry, dict) else str(msg_retry)
-                if not reply_text:
-                    reply_text = "抱歉，我暂时无法理解您的问题，可以换个描述再试试吗？"
+                if res_content.lower().replace("！", "").replace("!", "").replace("。", "").replace("，", "").strip() in GREETING_KEYWORDS:
+                    reply_text = "你好！有什么可以帮您的吗？"
+                else:
+                    logger.warning(f"run_agent 返回 output 为空，重试一次，原始返回: {msg}")
+                    msg_retry = AgentClass().run_agent(res_content)
+                    logger.info(f"AI重试回复: {msg_retry}")
+                    reply_text = msg_retry.get('output', '') if isinstance(msg_retry, dict) else str(msg_retry)
+                    if not reply_text:
+                        reply_text = "抱歉，我暂时无法理解您的问题，可以换个描述再试试吗？"
         except Exception as e:
             logger.error(f"AI处理异常: {e}")
             reply_text = "抱歉，AI处理消息时发生异常"

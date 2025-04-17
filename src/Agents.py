@@ -96,6 +96,11 @@ class AgentClass:
         返回:
             包含AI回复的字典
         """
+        # 新增：感谢/结束语识别
+        thanks_keywords = ["谢谢", "thanks", "thank you", "辛苦了", "好的", "明白了"]
+        if any(k in input.lower() for k in thanks_keywords):
+            return {"output": "不客气，有问题随时找我哦！"}
+
         try:
             # 进行情感分析，了解用户当前的情绪状态
             emotion_result = self.emotion.Emotion_Sensing(input)
@@ -120,9 +125,16 @@ class AgentClass:
         except Exception as e:
             print(f"agent_chain 执行异常: {e}")
             return {"output": "抱歉，AI处理时发生异常。"}
-        # 兼容 output 字段缺失的情况
-        if not res or not isinstance(res, dict) or not res.get("output"):
+        # 优化：output为空时尝试兜底
+        if not res or not isinstance(res, dict):
             print(f"agent_chain 返回内容异常: {res}")
-            return {"output": ""}
+            return {"output": "抱歉，我没有理解您的问题。"}
+        if not res.get("output"):
+            print(f"agent_chain 返回内容异常: {res}")
+            # 兜底尝试其他常见字段
+            for key in ["result", "answer", "response"]:
+                if key in res and res[key]:
+                    return {"output": res[key]}
+            return {"output": "抱歉，我没有理解您的问题。"}
         return res
 

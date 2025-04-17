@@ -82,6 +82,28 @@ def handle_message(data: P2ImMessageReceiveV1):
         else:
             res_content = "解析消息失败，请发送文本消息\nparse message failed, please send text message"
 
+        # 新增：无输入时直接回复并跳过AI处理
+        if not res_content:
+            logger.info("收到空消息，跳过AI处理")
+            reply_text = "请输入内容。"
+            content = json.dumps({"text": reply_text})
+            if data.event.message.chat_type == "p2p":
+                chat_id = data.event.message.chat_id or ""
+                request = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("text")
+                        .content(content)
+                        .build()
+                    )
+                    .build()
+                )
+                send_message(client.im.v1.message.create, request, "client.im.v1.message.create failed")
+            return
+
         # 获取用户ID，优先 open_id
         sender_id = getattr(data.event.sender.sender_id, "open_id", None) or getattr(data.event.sender.sender_id, "union_id", None) or "unknown"
         add_user("userid", sender_id)
@@ -89,35 +111,65 @@ def handle_message(data: P2ImMessageReceiveV1):
 
         # 调用智能体处理消息
         try:
+            logger.info(f"==========================AI请求开始=========================")
             msg = AgentClass().run_agent(res_content)
+            logger.info(f"==========================AI请求结束=========================")
             logger.info(f"AI回复: {msg}")
             reply_text = msg.get('output', '') if isinstance(msg, dict) else str(msg)
+            # 新增：如果output为空，重试一次
             if not reply_text:
-                logger.warning(f"run_agent 返回 output 为空，原始返回: {msg}")
-                reply_text = "抱歉，我暂时无法理解您的问题，可以换个问法试试吗？"
+                logger.warning(f"run_agent 返回 output 为空，重试一次，原始返回: {msg}")
+                msg_retry = AgentClass().run_agent(res_content)
+                logger.info(f"AI重试回复: {msg_retry}")
+                reply_text = msg_retry.get('output', '') if isinstance(msg_retry, dict) else str(msg_retry)
+                if not reply_text:
+                    reply_text = "抱歉，我暂时无法理解您的问题，可以换个描述再试试吗？"
         except Exception as e:
             logger.error(f"AI处理异常: {e}")
             reply_text = "抱歉，AI处理消息时发生异常"
 
-        content = json.dumps({"text": reply_text})
-
         # 在这里可以安全调用 send_message 函数
-        if data.event.message.chat_type == "p2p":
-            chat_id = data.event.message.chat_id or ""
-            request = (
-                CreateMessageRequest.builder()
-                .receive_id_type("chat_id")
-                .request_body(
-                    CreateMessageRequestBody.builder()
-                    .receive_id(chat_id)
-                    .msg_type("text")
-                    .content(content)
+        def send_streaming_message(full_text, chat_id, max_len=200):
+            """将长文本分段流式发送"""
+            import time
+            for i in range(0, len(full_text), max_len):
+                part = full_text[i:i+max_len]
+                content = json.dumps({"text": part})
+                request = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("text")
+                        .content(content)
+                        .build()
+                    )
                     .build()
                 )
-                .build()
-            )
-            # 修正：只用 message.create 发送消息
-            send_message(client.im.v1.message.create, request, "client.im.v1.message.create failed")
+                send_message(client.im.v1.message.create, request, "client.im.v1.message.create failed")
+                time.sleep(0.5)  # 防止风控，可调整
+
+        if data.event.message.chat_type == "p2p":
+            chat_id = data.event.message.chat_id or ""
+            # 如果内容较长，分段流式发送，否则一次性发送
+            if len(reply_text) > 200:
+                send_streaming_message(reply_text, chat_id, max_len=200)
+            else:
+                content = json.dumps({"text": reply_text})
+                request = (
+                    CreateMessageRequest.builder()
+                    .receive_id_type("chat_id")
+                    .request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(chat_id)
+                        .msg_type("text")
+                        .content(content)
+                        .build()
+                    )
+                    .build()
+                )
+                send_message(client.im.v1.message.create, request, "client.im.v1.message.create failed")
 
     except Exception as e:
         logger.error(f"处理消息时发生异常: {e}", exc_info=True)

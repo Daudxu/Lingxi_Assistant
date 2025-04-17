@@ -99,9 +99,7 @@ class AgentClass:
         try:
             # 进行情感分析，了解用户当前的情绪状态
             emotion_result = self.emotion.Emotion_Sensing(input)
-            
-            # 检查情感分析结果，如果为None则使用默认值
-            if emotion_result is None:
+            if not emotion_result:
                 print("情感分析返回None，使用默认情感设置")
                 self.feeling = {"feeling": "default", "score": "5"}
             else:
@@ -109,17 +107,22 @@ class AgentClass:
         except Exception as e:
             print(f"情感分析出错: {str(e)}，使用默认情感设置")
             self.feeling = {"feeling": "default", "score": "5"}
-        
-        # 根据用户情绪更新提示词结构
+
+        # 更新提示词结构
         self.prompt = PromptClass(memorykey=self.memorykey, feeling=self.feeling).Prompt_Structure()
         print("self.prompt", self.prompt)
-        
+
         # 运行代理链，处理用户输入
-        # 根据当前用户ID设置对应的记忆
-        res = self.agent_chain.with_config({
-            "agent_memory": self.memory.set_memory(session_id=get_user("userid"))
-        }).invoke(
-            {"input": input}  # 传入用户输入
-        )
-        return res  # 返回代理处理结果
+        session_id = get_user("userid")
+        memory_instance = self.memory.set_memory(session_id=session_id)
+        try:
+            res = self.agent_chain.with_config({"agent_memory": memory_instance}).invoke({"input": input})
+        except Exception as e:
+            print(f"agent_chain 执行异常: {e}")
+            return {"output": "抱歉，AI处理时发生异常。"}
+        # 兼容 output 字段缺失的情况
+        if not res or not isinstance(res, dict) or not res.get("output"):
+            print(f"agent_chain 返回内容异常: {res}")
+            return {"output": ""}
+        return res
 

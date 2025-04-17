@@ -10,6 +10,9 @@ import os
 redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 print(f"Redis URL: {redis_url}")
 
+def count_tokens(messages):
+    """估算消息总token数（简单按字符数/4）"""
+    return sum(len(m.content) // 4 for m in messages)
 
 class MemoryClass:
     def __init__(self, memorykey="chat_history", model=os.getenv("BASE_MODEL")):
@@ -28,9 +31,9 @@ class MemoryClass:
             chain = prompt | self.chatmodel
             summary = chain.invoke({"input": store_message, "who_you_are": Moods["default"]["roloSet"]})
             return summary
-        except KeyError as e:
-            print("总结出错")
-            print(e)
+        except Exception as e:
+            print("总结出错", e)
+            return None
 
     def get_memory(self, session_id: str = "session1"):
         try:
@@ -39,29 +42,29 @@ class MemoryClass:
             chat_message_history = RedisChatMessageHistory(
                 url=redis_url, session_id=session_id
             )
-            # 对超长的聊天记录进行摘要
             store_message = chat_message_history.messages
-            if len(store_message) > 80:
+            # 优化：按token数和消息数双重判断
+            if len(store_message) > 80 or count_tokens(store_message) > 3000:
                 str_message = ""
                 for message in store_message:
-                    str_message += f"{type(message).__name__}: {message.content}"
+                    str_message += f"{type(message).__name__}: {message.content}\n"
                 summary = self.summary_chain(str_message)
-                chat_message_history.clear()  # 清空原有的对话
-                chat_message_history.add_message(summary)  # 保存总结
-                print("添加总结后:", chat_message_history.messages)
+                chat_message_history.clear()
+                if summary:
+                    chat_message_history.add_message(summary)
+                print("添加摘要后:", chat_message_history.messages)
                 return chat_message_history
             else:
                 print("go to next step")
                 return chat_message_history
         except Exception as e:
-            print(e)
+            print("get_memory异常", e)
             return None
 
     def set_memory(self, session_id: str = "session1"):
         chat_memory = self.get_memory(session_id=session_id)
         if chat_memory is None:
-            print("chat_memory is None")
-            # 创建一个默认的 RedisChatMessageHistory 实例
+            print("chat_memory is None, 创建默认RedisChatMessageHistory")
             chat_memory = RedisChatMessageHistory(url=redis_url, session_id=session_id)
 
         self.memory = ConversationBufferMemory(
